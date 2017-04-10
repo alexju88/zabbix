@@ -1,0 +1,74 @@
+#!/usr/bin/env python
+#date 2013.5.9
+#author finy
+#Grab zabbix kind of generation, and generate a report
+import re,urllib,urllib2,cookielib,os
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
+zabbix='http://localhost'     #zabbix website url
+sender='appsend@163.com'           #sender
+receiver='exp@163.com'       #receiver
+smtpserver='mail.163.com'          #smtp server
+smtpusername='appsend'                   #smtp user password
+smtppassword='password'          #smtp username
+cycle='43200'                #repost cycle,unit for seconds
+date=int(os.popen('date +%Y%m%d%H%M%S').read())  #date generate
+imagedir='/usr/local/zabbix_data'        #save images directory
+zabbixuser='admin'           #zabbix username
+zabbixpassword='explort'         #zabbix login password
+post_data = urllib.urlencode({"autologin":"1","enter":"Sign in","name":"%s"%zabbixuser,"password":"%s"%zabbixpassword})             #web POST submit
+def slogin(loginurl):                   #obtaining cookie
+req = urllib2.Request(loginurl,post_data)
+_response = urllib2.urlopen(req)
+for i in str(_response.info()).split('\n'):
+if 'Set-Cookie' in i:
+sid = i.split("=")[1].split(";")[0][16:]
+break
+_d=_response.read()
+return _d,sid
+def pro():                            #Open the zabbix website,login zabbix
+post_data=""
+cj = cookielib.CookieJar()
+opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cj))
+opener.addheaders = [('User-agent', 'Mozilla/5.0 (Windows NT 6.2; WOW64; rv:19.0) Gecko/20100101 Firefox/19.0')]
+urllib2.install_opener(opener)
+url = "http://%s/zabbix" % zabbix
+global sid,login
+login,sid = slogin("%s/index.php" % zabbix)
+def sendmail():                     #get the url and download the images and sendmail,Using HTML format.
+imgda={"cpu":"%s/chart2.php?graphid=1004&period=%s&stime=%s&updateProfile=1&sid=%s&width=800"%(zabbix,cycle,date,sid),
+"mem":"%s/chart2.php?graphid=1005&period=%s&stime=%s&updateProfile=1&sid=%s&width=800"%(zabbix,cycle,date,sid),
+"java":"%s/chart2.php?graphid=1007&period=%s&stime=%s&updateProfile=1&sid=%s&width=800"%(zabbix,cycle,date,sid),
+"mysql":"%s/chart2.php?graphid=1008&period=%s&stime=%s&updateProfile=1&sid=%s&width=800"%(zabbix,cycle,date,sid),
+"load":"%s/chart2.php?graphid=1009&period=%s&stime=%s&updateProfile=1&sid=%s&width=800"%(zabbix,cycle,date,sid),
+"net":"%s/chart2.php?graphid=1010&period=%s&stime=%s&updateProfile=1&sid=%s&width=800"%(zabbix,cycle,date,sid)}
+os.popen('if [ ! -d %s ];then mkdir -p %s ;fi'%(imagedir,imagedir))
+os.chdir(imagedir)
+for key in imgda.keys():
+filename=open(key+'.png','w')
+filename.write(urllib2.urlopen(imgda[key]).read())
+filename.close()
+ic=os.popen('ls  *.png').read()
+ic2=[]
+for ii in imgda.keys():
+ic2.append(ii+'.png')
+msgRoot = MIMEMultipart('related')
+msgRoot['Subject'] = 'zabbix  report'
+msgText = MIMEText('<h1>Cpu Use</h1><br><img src="cid:image5"><br><h1>Men Use</h1><br><img src="cid:image2"><br><h1>load average</h1><br><img src="cid:image0"><br><h1>network I/O</h1><br><img src="cid:image4"><br><h1>mysql status</h1><br><img src="cid:image3"><h1>java running</h1><br><img src="cid:image1"></html>','html','utl8')
+msgRoot.attach(msgText)
+for ii in range(len(imgda.keys())):
+fp=open(ic2[ii],'rb')
+images=MIMEImage(fp.read())
+fp.close()
+images.add_header('Content-ID', '<image%s>'%ii)
+msgRoot.attach(images)
+smtp = smtplib.SMTP()
+smtp.connect(smtpserver)
+smtp.login(smtpusername,smtppassword)
+smtp.sendmail(sender, receiver, msgRoot.as_string())
+smtp.quit()
+if __name__ == '__main__':
+pro()
+sendmail()
